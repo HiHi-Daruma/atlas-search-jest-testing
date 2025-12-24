@@ -17,5 +17,8 @@
   "bugs": {
     "url": "https://github.com/HiHi-Daruma/atlas-search-jest-testing/issues"
   },
-  "homepage": "https://github.com/HiHi-Daruma/atlas-search-jest-testing#readme"
+  "homepage": "https://github.com/HiHi-Daruma/atlas-search-jest-testing#readme",
+  "dependencies": {
+    "mongodb": "^7.0.0"
+  }
 }
