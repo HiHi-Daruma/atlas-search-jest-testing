@@ -2,16 +2,15 @@
   "name": "atlas-search-jest-testing",
   "version": "1.0.0",
   "description": "This repository demonstrates how to use the mongodb-atlas-local Docker image with Testcontainers and Jest to run isolated and reliable search integration tests in TypeScript.",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HiHi-Daruma/atlas-search-jest-testing.git"
   },
   "keywords": [],
-  "author": "",
+  "author": "Hugo Tembremande",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
@@ -22,8 +21,11 @@
     "mongodb": "^7.0.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "jest": "^30.2.0",
     "prettier": "^3.7.4",
-    "testcontainers": "^11.10.0"
+    "testcontainers": "^11.10.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.9.3"
   }
 }
