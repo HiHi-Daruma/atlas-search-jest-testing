@@ -1,11 +1,20 @@
 import { Collection, Document, OptionalUnlessRequiredId } from "mongodb";
-import { SearchIndexDefinition, SearchIndexStatus } from "./types/search-index";
+import {
+  SearchIndexDefinition,
+  SearchIndexStatus,
+  SearchMetaCountResult,
+} from "./search-index.types";
+
+const POLLING_INTERVAL_MS = 200;
+const DEFAULT_TIMEOUT_MS = 30000;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const insertManyInAtlasSearch = async <T extends Document>(
   collection: Collection<T>,
   documents: OptionalUnlessRequiredId<T>[],
   searchIndexSpec: SearchIndexDefinition,
-  timeoutMs = 60000,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<void> => {
   const startTime = Date.now();
 
@@ -31,10 +40,11 @@ const createSearchIndexAndWait = async <T extends Document>(
 ): Promise<void> => {
   try {
     await collection.createSearchIndex(searchIndexSpec);
-
     await waitForSearchIndexReady(collection, searchIndexSpec.name, timeoutMs);
   } catch (error) {
-    throw new Error(`Error creating search index ${searchIndexSpec.name}`);
+    throw new Error(
+      `Error creating search index ${searchIndexSpec.name}: ${error instanceof Error ? error.message : error}`,
+    );
   }
 };
 
@@ -43,23 +53,19 @@ const waitForSearchIndexReady = async <T extends Document>(
   indexName: string,
   timeoutMs: number,
 ): Promise<void> => {
-  const startTime = Date.now();
+  const deadline = Date.now() + timeoutMs;
 
-  while (Date.now() - startTime < timeoutMs) {
-    try {
-      const indexes = (await collection
-        .listSearchIndexes()
-        .toArray()) as SearchIndexStatus[];
-      const targetIndex = indexes.find((index) => index.name === indexName);
+  while (Date.now() < deadline) {
+    const indexes = (await collection
+      .listSearchIndexes()
+      .toArray()) as SearchIndexStatus[];
+    const targetIndex = indexes.find((index) => index.name === indexName);
 
-      if (targetIndex?.status === "READY") {
-        return;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    } catch (error) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+    if (targetIndex?.status === "READY") {
+      return;
     }
+
+    await delay(POLLING_INTERVAL_MS);
   }
 
   throw new Error(
@@ -73,62 +79,27 @@ const waitForDocumentsInIndex = async <T extends Document>(
   expectedDocumentCount: number,
   timeoutMs: number,
 ): Promise<void> => {
-  const startTime = Date.now();
+  const deadline = Date.now() + timeoutMs;
 
-  while (Date.now() - startTime < timeoutMs) {
-    try {
-      const results = await collection
-        .aggregate([
-          {
-            $searchMeta: {
-              index: searchIndexSpec.name,
-              count: { type: "total" },
-              exists: { path: "_id" },
-            },
-          },
-        ])
-        .toArray();
-
-      const actualCount = results[0]?.count?.total ?? 0;
-
-      if (actualCount >= expectedDocumentCount) {
-        return;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    } catch (error) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-  }
-
-  throw new Error(
-    `Timeout: Only ${await getIndexedDocumentCount(
-      collection,
-      searchIndexSpec,
-    )} documents have been inserted in ${timeoutMs}ms instead of ${expectedDocumentCount}`,
-  );
-};
-
-const getIndexedDocumentCount = async <T extends Document>(
-  collection: Collection<T>,
-  searchIndexSpec: SearchIndexDefinition,
-): Promise<number> => {
-  try {
-    const indexedDocuments = await collection
-      .aggregate([
+  while (Date.now() < deadline) {
+    const [results] = await collection
+      .aggregate<SearchMetaCountResult>([
         {
-          $search: {
+          $searchMeta: {
             index: searchIndexSpec.name,
-            compound: {
-              must: [{ exists: { path: "_id" } }],
-            },
+            count: { type: "total" },
+            exists: { path: "_id" },
           },
         },
-        { $project: { _id: 1 } },
       ])
       .toArray();
-    return indexedDocuments.length;
-  } catch {
-    return 0;
+
+    if (results.count.total >= expectedDocumentCount) {
+      return;
+    }
+
+    await delay(POLLING_INTERVAL_MS);
   }
+
+  throw new Error(`Timeout: Documents were not inserted in ${timeoutMs}ms`);
 };
